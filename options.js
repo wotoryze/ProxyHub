@@ -61,6 +61,7 @@ async function loadState() {
   state = await send({ type: "GET_STATE" });
   if (!state.vault) state.vault = { locked: false, saltB64: null };
   if (!state.defaultMode) state.defaultMode = PH_DIRECT_ID;
+  if (!Array.isArray(state.dismissedHosts)) state.dismissedHosts = [];
 }
 async function saveState() {
   await send({ type: "SET_STATE", state });
@@ -721,8 +722,43 @@ function renderKnownHosts() {
   const kh = ensureKnownHosts();
   document.getElementById("customCdnText").value = (kh.extraDomains || []).join("\n");
   renderBuiltinCdnList();
+  renderDismissedHosts();
   renderGroupsTable();
 }
+
+function renderDismissedHosts() {
+  const hosts = state.dismissedHosts || [];
+  const countEl = document.getElementById("dismissedHostsCount");
+  const list = document.getElementById("dismissedHostsList");
+  const resetBtn = document.getElementById("resetDismissedBtn");
+  countEl.textContent = hosts.length ? `(${hosts.length})` : "";
+  resetBtn.disabled = !hosts.length;
+  list.innerHTML = "";
+
+  if (!hosts.length) {
+    list.innerHTML = `<span class="muted">No sites are dismissed.</span>`;
+    return;
+  }
+
+  for (const host of [...hosts].sort()) {
+    const chip = document.createElement("span");
+    chip.className = "host-chip";
+    chip.title = "Click to show suggestions for this site again";
+    chip.textContent = host;
+    chip.addEventListener("click", async () => {
+      state.dismissedHosts = (state.dismissedHosts || []).filter(h => h !== host);
+      await saveState();
+      renderDismissedHosts();
+    });
+    list.appendChild(chip);
+  }
+}
+
+document.getElementById("resetDismissedBtn").addEventListener("click", async () => {
+  state.dismissedHosts = [];
+  await saveState();
+  renderDismissedHosts();
+});
 
 function renderBuiltinCdnList() {
   const kh = ensureKnownHosts();

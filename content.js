@@ -57,10 +57,13 @@
   }
 
   const pageHost = location.hostname;
+  // www/non-www are the same site for dismissal purposes, so one "Don't
+  // suggest again" covers both.
+  const dismissKey = pageHost.replace(/^www\./i, "").toLowerCase();
   const failedHosts = new Set();     // signal 1/2/3: confirmed broken loads
   const scannedHosts = new Set();    // signal 4: known-CDN references found in the DOM
   const cspBlockedHosts = new Set(); // signal 5: blocked by the page's own CSP, not network
-  let dismissed = false;
+  let bannerClosed = false;          // no more banner for THIS page load (transient close)
 
   // Direct tabs don't go through a proxy, so a CDN domain "failing" or
   // being referenced here means nothing about proxy coverage — there's
@@ -150,11 +153,12 @@
   }
 
   async function evaluate() {
-    if (dismissed || directPage) return;
+    if (bannerClosed || directPage) return;
 
     const state = await send({ type: "GET_STATE" });
     if (!state) return;
     if (!state.enabled) return; // routing is off globally, nothing to suggest
+    if (Array.isArray(state.dismissedHosts) && state.dismissedHosts.includes(dismissKey)) return;
 
     const pageIsRouted = state.rules.some(r =>
       r.enabled !== false && r.patterns.some(p => shExpMatchLike(pageHost, p))
@@ -242,7 +246,7 @@
   }
 
   async function showBanner(hosts, state, failedSet, cspExcludedCount) {
-    if (dismissed) return;
+    if (bannerClosed) return;
 
     mountBannerHost();
     const theme = await getTheme();
@@ -268,23 +272,36 @@
             ${!hasProfiles ? `<div class="ph-sub ph-warn">No proxy profile exists yet.</div>` : ""}
           </div>
           <div class="ph-actions">
-            ${hasProfiles ? `<select id="ph-profile-select" class="ph-select">${profileOptions}</select>` : ""}
-            ${hasProfiles
-              ? `<button id="ph-add-reload" class="ph-btn ph-primary">Add &amp; reload</button>`
-              : `<button id="ph-open-options" class="ph-btn ph-primary">Open options</button>`}
-            <button id="ph-dismiss" class="ph-btn ph-secondary">Dismiss</button>
+            <div class="ph-action-row">
+              ${hasProfiles ? `<select id="ph-profile-select" class="ph-select">${profileOptions}</select>` : ""}
+              ${hasProfiles
+                ? `<button id="ph-add-reload" class="ph-btn ph-primary">Add &amp; reload</button>`
+                : `<button id="ph-open-options" class="ph-btn ph-primary">Open options</button>`}
+            </div>
+            <div class="ph-action-row">
+              <button id="ph-dismiss" class="ph-btn ph-secondary" title="Never show this suggestion on this site again">Don't suggest again</button>
+              <button id="ph-close" class="ph-btn ph-secondary ph-icon-btn" title="Close for now" aria-label="Close">${typeof PH_ICONS !== "undefined" ? PH_ICONS.close : ""}</button>
+            </div>
           </div>
         </div>
       </div>
     `;
 
-    const dismissBtn = shadow.getElementById("ph-dismiss");
-    dismissBtn.addEventListener("click", () => {
-      dismissed = true;
-      bannerHost.remove();
+    function closeBanner() {
+      bannerClosed = true;
+      if (bannerHost) bannerHost.remove();
       bannerHost = null;
       bannerShadow = null;
+    }
+
+    const dismissBtn = shadow.getElementById("ph-dismiss");
+    dismissBtn.addEventListener("click", async () => {
+      closeBanner();
+      await send({ type: "DISMISS_SUGGESTIONS", host: dismissKey });
     });
+
+    const closeBtn = shadow.getElementById("ph-close");
+    closeBtn.addEventListener("click", closeBanner);
 
     const addBtn = shadow.getElementById("ph-add-reload");
     if (addBtn) {
@@ -378,13 +395,16 @@
       background: var(--ph-chip-bg); color: var(--ph-text); border: 1px solid var(--ph-border);
       border-radius: 7px; padding: 5px 7px; font-size: 11.5px; max-width: 130px;
     }
-    .ph-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .ph-actions { display: flex; flex-direction: column; align-items: stretch; gap: 6px; flex-shrink: 0; }
+    .ph-action-row { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
     .ph-btn {
       border: none; border-radius: 7px; padding: 6px 11px; font-size: 11.5px;
       font-weight: 700; cursor: pointer; white-space: nowrap;
     }
     .ph-primary { background: var(--ph-accent); color: #241a14; }
     .ph-secondary { background: var(--ph-chip-bg); color: var(--ph-text-dim); border: 1px solid var(--ph-border); }
+    .ph-icon-btn { display: inline-flex; align-items: center; justify-content: center; padding: 6px 7px; }
+    .ph-icon-btn svg { width: 12px; height: 12px; display: block; }
     .ph-btn:hover { filter: brightness(1.08); }
     .ph-btn:disabled { opacity: .6; cursor: not-allowed; }
   `;

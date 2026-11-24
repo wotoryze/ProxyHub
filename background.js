@@ -28,7 +28,9 @@ const STORAGE_KEY = PH_STORAGE_KEY;
  *                         // rule instead of creating a new one every time the
  *                         // user changes the profile for a site.
  *     includeSubdomains,  // whether ownerHost's rule includes *.host
- *   }]
+ *   }],
+ *   dismissedHosts: [string]    // sites where the on-page suggestion banner was
+ *                               // permanently dismissed ("Don't suggest again")
  * }
  * Rules are evaluated in array order (first match wins). patterns[0] is
  * treated as the "site" pattern in the UI; any further patterns are shown
@@ -46,6 +48,7 @@ async function getState() {
   if (!base.defaultMode) base.defaultMode = PH_DIRECT_ID;
   if (typeof base.enabled !== "boolean") base.enabled = true;
   if (!base.knownHosts) base.knownHosts = defaultKnownHosts();
+  if (!Array.isArray(base.dismissedHosts)) base.dismissedHosts = [];
   return base;
 }
 
@@ -428,6 +431,19 @@ PH_API.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       case "SET_STATE": {
         await setState(msg.state);
         await applyProxySettings();
+        sendResponse({ ok: true });
+        break;
+      }
+      // "Don't suggest again" on the on-page banner: remember the site so the
+      // banner stays hidden there until the user resets dismissals in Options.
+      case "DISMISS_SUGGESTIONS": {
+        const state = await getState();
+        const host = String(msg.host || "").trim().toLowerCase().replace(/^www\./, "");
+        if (!host) { sendResponse({ ok: false, error: "no host" }); break; }
+        if (!state.dismissedHosts.includes(host)) {
+          state.dismissedHosts.push(host);
+          await setState(state);
+        }
         sendResponse({ ok: true });
         break;
       }

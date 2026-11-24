@@ -156,6 +156,16 @@
     </div>
 
     <div class="card">
+      <h3>Dismissed suggestions <span class="muted" id="dismissedHostsCount"></span></h3>
+      <p class="muted">
+        Sites where you clicked <strong>Don't suggest again</strong> on the on-page banner.
+        Suggestions stay hidden there until you restore them. Click a site to restore just that one.
+      </p>
+      <div id="dismissedHostsList" class="host-chip-list"></div>
+      <div class="row"><button id="resetDismissedBtn" class="secondary">Reset all dismissals</button></div>
+    </div>
+
+    <div class="card">
       <h3>Built-in CDN domains <span class="muted" id="builtinCdnCount"></span></h3>
       <p class="muted">Click a domain to hide it from suggestions (it won't be removed, just ignored).</p>
       <div class="search-box" style="margin-bottom:10px;">
